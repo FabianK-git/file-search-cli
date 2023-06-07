@@ -15,6 +15,7 @@ use crossterm::{
 };
 use terminal_link::Link;
 use ctrlc;
+use normpath::PathExt;
 
 fn main() -> Result<()> {
     // Setup Ctrl + C interrupt handling
@@ -131,15 +132,24 @@ fn traverse_filesystem(current_dir: PathBuf, pattern: &Regex) {
             match entry {
                 Ok(entry) => {
                     if pattern.is_match(entry.file_name().to_str().unwrap()) {
-                        let filename = entry.path().to_str().unwrap_or("").to_owned();
+                        let file_path = entry.path();
 
-                        execute!(
-                            stdout(),
-                            Clear(ClearType::CurrentLine),
-                            SetForegroundColor(Color::Green),
-                            Print(format!("\r{}\n", Link::new(&filename, &format!("file://{}", filename)))),
-                            ResetColor
-                        ).unwrap();
+                        let absolute_path = file_path.normalize();
+
+                        match absolute_path {
+                            Ok(absolute_path) => {
+                                let path = absolute_path.as_path().to_str().unwrap_or("");
+
+                                execute!(
+                                    stdout(),
+                                    Clear(ClearType::CurrentLine),
+                                    SetForegroundColor(Color::Green),
+                                    Print(format!("\r{}\n", Link::new(path, &format!("file://{}", path)))),
+                                    ResetColor
+                                ).unwrap();
+                            },
+                            Err(e) => println!("{:?}", e)
+                        }
                     }
 
                     execute!(
