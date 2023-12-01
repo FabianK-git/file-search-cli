@@ -140,6 +140,29 @@ fn parse_arguments(args: env::Args) -> HashMap<String, String> {
     return arguments;
 }
 
+fn is_substring(string: String, substring: String) -> bool {
+    let mut matches: usize = 0;
+    let subc: Vec<_> = substring.chars().collect();
+
+    for (i, sc) in string.chars().enumerate() {
+        if string.len() - i < substring.len() && matches == 0 {
+            return false;
+        }
+
+        if matches == substring.len() - 1 {
+            return true;
+        }
+        else if sc == *subc.get(matches).unwrap() {
+            matches += 1;
+        } 
+        else {
+            matches = 0;
+        }
+    }
+
+    return false; 
+}
+
 fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm) {
     let entries = fs::read_dir(current_dir);
     
@@ -148,12 +171,8 @@ fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm) {
             match entry {
                 Ok(entry) => {
                     if search.regex.as_ref().is_some_and(|pattern| pattern.is_match(entry.file_name().to_str().unwrap())) || 
-                       search.search_string.as_ref().is_some_and(|string| string.find(entry.file_name().to_str().unwrap()).is_some()) 
+                       search.search_string.as_ref().is_some_and(|string| is_substring(entry.file_name().to_str().unwrap().to_string(), string.to_string()))
                     {
-                        // if search.search_string.is_some() {
-                        //     println!("{:?}", search.search_string);
-                        // }
-
                         let file_path = entry.path();
                         let absolute_path = file_path.normalize();
 
@@ -169,7 +188,17 @@ fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm) {
                                     ResetColor
                                 ).unwrap();
                             },
-                            Err(e) => println!("{:?}", e)
+                            Err(e) => {
+                                let path = file_path.to_str().unwrap_or("");
+
+                                execute!(
+                                    stdout(),
+                                    Clear(ClearType::CurrentLine),
+                                    SetForegroundColor(Color::Red),
+                                    Print(format!("\r{}: {}\n", path, e)),
+                                    ResetColor
+                                ).unwrap();
+                            }
                         }
                     }
 
@@ -188,7 +217,15 @@ fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm) {
                         }
                     }
                 },
-                Err(e) => println!("\n{:?}", e)
+                Err(e) => {
+                    execute!(
+                        stdout(),
+                        Clear(ClearType::CurrentLine),
+                        SetForegroundColor(Color::Red),
+                        Print(format!("\r{:?}\n", e)),
+                        ResetColor
+                    ).unwrap();
+                }
             };
         }
     }
