@@ -1,17 +1,25 @@
 use std::{
     fs,
-    env, 
+    env,
+    result::Result,
     collections::HashMap, 
     process::exit,
     path::{PathBuf, Path},
-    io::stdout
+    io::stdout,
 };
 use regex::Regex;
 use crossterm::{
+    cursor::MoveRight, 
     execute, 
-    style::{Color, Print, ResetColor, SetForegroundColor},
-    Result,
-    terminal::{Clear, ClearType, DisableLineWrap, EnableLineWrap}
+    style::{Color, Print, ResetColor, SetForegroundColor}, 
+    terminal::{
+        window_size,
+        Clear,
+        ClearType,
+        DisableLineWrap,
+        EnableLineWrap,
+        WindowSize
+    }
 };
 use terminal_link::Link;
 use ctrlc;
@@ -24,14 +32,14 @@ struct SearchTerm {
     mime: String
 }
 
-fn main() -> Result<()> {
+fn main() -> Result<(), std::io::Error> {
     // Setup Ctrl + C interrupt handling
     ctrlc::set_handler(move || {
         execute!(
             stdout(),
             SetForegroundColor(Color::Red),
             Print("\r\nKeyboard Interrupt\n"),
-            ResetColor
+            ResetColor,
         ).unwrap();
 
         exit(0);
@@ -79,13 +87,15 @@ fn main() -> Result<()> {
         search.mime = String::from(args.get("mime").unwrap());
     }
 
-    traverse_filesystem(directory, &search);
+    let mut count = 0;
+
+    traverse_filesystem(directory, &search, &mut count);
 
     execute!(
         stdout(),
         Clear(ClearType::CurrentLine),
         SetForegroundColor(Color::DarkGreen),
-        Print("\rProcess finished\n")
+        Print("\rProcess finished\n"),
     )?;
 
     return Ok(());
@@ -160,7 +170,7 @@ fn parse_arguments(args: env::Args) -> HashMap<String, String> {
     return arguments;
 }
 
-fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm) {
+fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm, count: &mut usize) {
     let entries = match fs::read_dir(current_dir) {
         Ok(entries) => entries,
         Err(_) => return
@@ -178,7 +188,7 @@ fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm) {
                     ResetColor
                 ).unwrap();
 
-                return;
+                continue;
             }
         };
 
@@ -246,10 +256,32 @@ fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm) {
             }
         }
 
+        let size = window_size().unwrap_or(
+            WindowSize {
+                rows: 0,
+                columns: 0,
+                width: 0,
+                height: 0
+            }
+        );
+
+        *count += 1;
+        let str_count = format!("{}", count);
+
+        let mut move_amount = 0;
+
+        if size.columns > str_count.len() as u16 {
+            move_amount = size.columns - str_count.len() as u16;
+        }
+
         execute!(
             stdout(),
             Clear(ClearType::CurrentLine),
             DisableLineWrap,
+            Print("\r"),
+            MoveRight(move_amount),
+            Print(str_count),
+            Print("\r"),
             Print(
                 format!(
                     "\rChecking item: {}", 
@@ -262,10 +294,20 @@ fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm) {
         // Call this function again if a folder is found
         if let Ok(entry_type) = entry.file_type() {
             if entry_type.is_dir() {
-                traverse_filesystem(entry.path(), search);
+                traverse_filesystem(entry.path(), search, count);
+            }
+            else if entry_type.is_symlink() {
+                if let Ok(absolute_path) = fs::canonicalize(entry.path()) {
+                    let metadata = fs::metadata(absolute_path.clone());
+
+                    if let Ok(entry_type) = metadata {
+                        if entry_type.is_dir() {
+                            traverse_filesystem(entry.path(), search, count);
+                        }
+                    }
+                }
             }
         }
-
     }
 }
 
