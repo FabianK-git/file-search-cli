@@ -218,7 +218,7 @@ fn traverse_filesystem(current_dir: PathBuf, search: &SearchTerm, count: &mut us
         };
 
         // If only the mime type is specified search with it
-        let mime_search = search.search_string.is_none() && 
+        let mime_search = search.regex.is_none() && 
             search.search_string.is_none();
 
         if (search_regex || search_term || mime_search) && search_mime {
